@@ -1,3 +1,7 @@
+import streamlit as st
+import requests
+import pandas as pd
+
 @st.cache_data(ttl=600) # Caches for 10 mins to prevent spamming Steam
 def get_data(s_id, a_key):
     # 1. Get Inventory
@@ -47,3 +51,4 @@ def get_data(s_id, a_key):
     summary = df.groupby('Item').agg({'Price': 'first', 'Item': 'count'}).rename(columns={'Item': 'Qty'}).reset_index()
     summary['Subtotal'] = summary['Price'] * summary['Qty']
     return summary, None
+

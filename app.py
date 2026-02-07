@@ -1,84 +1,73 @@
 import streamlit as st
 import requests
 import pandas as pd
-import time
 
-st.set_page_config(page_title="CS2 Tracker", layout="centered")
+# --- 1. DEFINE YOUR INVENTORY HERE ---
+# Write the exact "Market Hash Name" as it appears on Steam
+MY_ITEMS = {
+    "AK-47 | Slate (Field-Tested)": 1,
+    "Desert Eagle | Printstream (Field-Tested)": 1,
+    "Recoil Case": 50,
+    "Paris 2023 Legends Sticker Capsule": 100,
+    # Add your items here...
+}
 
-st.title("💰 CS2 Inventory Tracker")
+# --- APP SETUP ---
+st.set_page_config(page_title="My Skin Portfolio", layout="centered")
+st.title("Skins Price Tracker")
 
 with st.sidebar:
-    st.header("Settings")
-    steam_id = st.text_input("SteamID64 (17 digits)", placeholder="76561198...")
     api_key = st.text_input("PriceEmpire API Key", type="password")
-    st.info("If it fails, wait 15 mins. Steam rate-limits are strict.")
+    st.info("Since your items are hardcoded, we don't need Steam login at all!")
 
-@st.cache_data(ttl=600)
-def get_data(s_id, a_key):
-    # Mimic a real browser VERY closely
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
-    }
-    
-    inv_url = f"https://steamcommunity.com/inventory/{s_id}/730/2?l=english&count=5000"
+@st.cache_data(ttl=3600) # Updates prices once per hour
+def get_prices(a_key):
+    url = "https://api.pricempire.com/v3/items/prices"
+    params = {'appId': 730, 'sources': 'steam', 'currency': 'USD', 'api_key': a_key}
     
     try:
-        response = requests.get(inv_url, headers=headers, timeout=15)
-        
-        # 1. Check HTTP Status
-        if response.status_code == 429:
-            return None, "Steam blocked this request (Rate Limit). Please wait 15-30 minutes."
-        if response.status_code == 403:
-            return None, "Access Denied (403). Ensure your Steam Inventory is 'Public' in privacy settings."
-        
-        # 2. Try to parse JSON safely
-        try:
-            inv_data = response.json()
-        except Exception:
-            return None, "Steam sent a non-JSON response. They are likely blocking the server temporarily."
-
-        # 3. Check Steam's internal 'success' flag
-        if not inv_data or inv_data.get('success') != 1:
-            return None, "Steam returned Success: False. Your profile might be private or Steam is down."
-
-        # Process Items
-        descriptions = {d['classid']: d for d in inv_data.get('descriptions', [])}
-        item_names = [descriptions[item['classid']]['market_hash_name'] for item in inv_data.get('assets', [])]
-
-        # 4. Get Prices
-        price_url = "https://api.pricempire.com/v3/items/prices"
-        params = {'appId': 730, 'sources': 'steam', 'currency': 'USD', 'api_key': a_key}
-        price_res = requests.get(price_url, params=params).json()
-        price_db = price_res.get('data', {})
-
-        rows = []
-        for name in item_names:
-            price_cents = price_db.get(name, {}).get('steam', {}).get('price', 0)
-            rows.append({"Item": name, "Price": price_cents / 100})
-
-        df = pd.DataFrame(rows)
-        if df.empty: return None, "No items found."
-
-        summary = df.groupby('Item').agg({'Price': 'first', 'Item': 'count'}).rename(columns={'Item': 'Qty'}).reset_index()
-        summary['Subtotal'] = summary['Price'] * summary['Qty']
-        return summary.sort_values('Subtotal', ascending=False), None
-
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            return response.json().get('data', {}), None
+        else:
+            return None, f"PriceEmpire Error: {response.status_code}"
     except Exception as e:
-        return None, f"App Error: {str(e)}"
+        return None, f"Connection Error: {str(e)}"
 
-# UI Execution
-if steam_id and api_key:
-    if st.button('Refresh Inventory'):
-        st.cache_data.clear()
-
-    with st.spinner('Accessing Steam...'):
-        data, error = get_data(steam_id, api_key)
+# --- MAIN LOGIC ---
+if api_key:
+    with st.spinner('Updating market prices...'):
+        price_db, error = get_prices(api_key)
         
         if error:
             st.error(error)
         else:
-            st.metric("Total Value", f"${data['Subtotal'].sum():,.2f}")
-            st.dataframe(data, use_container_width=True, hide_index=True)
+            rows = []
+            for item_name, qty in MY_ITEMS.items():
+                # Get the steam price from the API data
+                item_data = price_db.get(item_name, {}).get('steam', {})
+                price = item_data.get('price', 0) / 100 # Convert cents to dollars
+                
+                rows.append({
+                    "Item": item_name,
+                    "Price": price,
+                    "Qty": qty,
+                    "Subtotal": price * qty
+                })
+            
+            df = pd.DataFrame(rows)
+            total_val = df['Subtotal'].sum()
+            
+            # Display Metric
+            st.metric("Total Portfolio Value", f"${total_val:,.2f}")
+            
+            # Display Table
+            st.dataframe(
+                df.style.format({"Price": "${:.2f}", "Subtotal": "${:.2f}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.success("Prices updated successfully!")
 else:
-    st.warning("Please enter your SteamID64 and PriceEmpire Key in the sidebar.")
+    st.warning("Please enter your PriceEmpire API Key in the sidebar.")

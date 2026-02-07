@@ -2,53 +2,84 @@ import streamlit as st
 import requests
 import pandas as pd
 
-@st.cache_data(ttl=600) # Caches for 10 mins to prevent spamming Steam
-def get_data(s_id, a_key):
-    # 1. Get Inventory
+# Basic page setup for mobile
+st.set_page_config(page_title="CS2 Inventory", layout="centered")
+
+st.title("💰 CS2 Inventory Tracker")
+st.caption("Live Steam Prices via PriceEmpire")
+
+# Sidebar for inputs (so they don't take up screen space)
+with st.sidebar:
+    st.header("Credentials")
+    # You can hardcode these if you don't want to type them every time
+    steam_id = st.text_input("SteamID64", placeholder="76561198...")
+    api_key = st.text_input("PriceEmpire API Key", type="password")
+    st.info("Ensure your Steam Inventory is set to 'Public'.")
+
+@st.cache_data(ttl=600)  # Caches data for 10 mins to avoid Steam rate limits
+def get_inventory_and_prices(s_id, a_key):
+    # 1. Fetch Inventory from Steam
     inv_url = f"https://steamcommunity.com/inventory/{s_id}/730/2?l=english&count=5000"
     try:
         response = requests.get(inv_url)
-        
-        # Check if Steam blocked you
         if response.status_code == 429:
-            return None, "Steam blocked the request (Too Many Requests). Wait 5 minutes and try again."
+            return None, "Steam is busy (Rate Limited). Try again in 5-10 mins."
         
-        inv_res = response.json()
+        inv_data = response.json()
+        if not inv_data or inv_data.get('success') != 1:
+            return None, "Inventory private or Steam servers are down."
     except Exception as e:
-        return None, f"Failed to connect to Steam: {str(e)}"
-    
-    # Check if the response actually contains the inventory
-    if not inv_res or inv_res.get('success') != 1:
-        error_msg = inv_res.get('Error', "Unknown Error (Inventory might be private)")
-        return None, f"Steam Error: {error_msg}"
+        return None, f"Connection Error: {str(e)}"
 
-    descriptions = {d['classid']: d for d in inv_res['descriptions']}
-    my_items = [descriptions[item['classid']]['market_hash_name'] for item in inv_res['assets']]
+    # Map classid to names
+    descriptions = {d['classid']: d for d in inv_data['descriptions']}
+    item_names = [descriptions[item['classid']]['market_hash_name'] for item in inv_data['assets']]
 
-    # 2. Get Prices from PriceEmpire
+    # 2. Fetch Prices from PriceEmpire
     price_url = "https://api.pricempire.com/v3/items/prices"
     params = {'appId': 730, 'sources': 'steam', 'currency': 'USD', 'api_key': a_key}
     
     try:
-        price_data = requests.get(price_url, params=params).json().get('data', {})
+        price_response = requests.get(price_url, params=params).json()
+        price_db = price_response.get('data', {})
     except:
-        return None, "Connected to Steam, but failed to get prices from PriceEmpire."
-    
-    # 3. Process
+        return None, "Failed to reach PriceEmpire API."
+
+    # 3. Combine Data
     rows = []
-    for name in my_items:
-        # Digging into the nested JSON for the steam price
-        item_info = price_data.get(name, {})
-        steam_info = item_info.get('steam', {})
-        price_cents = steam_info.get('price', 0)
-        
-        rows.append({"Item": name, "Price": price_cents / 100})
-    
+    for name in item_names:
+        # PriceEmpire returns prices in cents
+        raw_price = price_db.get(name, {}).get('steam', {}).get('price', 0)
+        rows.append({"Item": name, "Price": raw_price / 100})
+
     df = pd.DataFrame(rows)
     if df.empty:
-        return None, "Inventory found, but no marketable items were detected."
-        
+        return None, "No items found."
+
+    # Create Summary Table
     summary = df.groupby('Item').agg({'Price': 'first', 'Item': 'count'}).rename(columns={'Item': 'Qty'}).reset_index()
     summary['Subtotal'] = summary['Price'] * summary['Qty']
-    return summary, None
+    return summary.sort_values(by='Subtotal', ascending=False), None
 
+# Main App Logic
+if steam_id and api_key:
+    if st.button('Refresh Inventory'):
+        st.cache_data.clear() # Forces a fresh download
+
+    with st.spinner('Loading your skins...'):
+        data, error = get_inventory_and_prices(steam_id, api_key)
+        
+        if error:
+            st.error(error)
+        else:
+            total_value = data['Subtotal'].sum()
+            st.metric("Total Steam Value", f"${total_value:,.2f}")
+            
+            # Formats the price columns for the table
+            st.dataframe(
+                data.style.format({"Price": "${:.2f}", "Subtotal": "${:.2f}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+else:
+    st.warning("Please enter your SteamID and API Key in the sidebar.")

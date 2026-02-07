@@ -21,7 +21,7 @@ def get_single_price(item_name):
     url = "https://steamcommunity.com/market/priceoverview/"
     params = {
         'appid': 730,
-        'currency': 1, # 1 is USD
+        'currency': 26, # Updated to PEN
         'market_hash_name': item_name
     }
     try:
@@ -61,4 +61,5 @@ if 'df' in st.session_state:
     st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.info("Click the button above to fetch live Steam prices.")
+
 

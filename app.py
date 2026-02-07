@@ -3,72 +3,74 @@ import requests
 import pandas as pd
 import time
 
-# --- 1. LIST YOUR ITEMS HERE ---
+# --- 1. YOUR ITEMS (English Names Required) ---
 MY_ITEMS = {
     "AK-47 | The Empress (Field-Tested)": 1,
     "Copenhagen 2024 Contenders Sticker Capsule": 31,
     "Copenhagen 2024 Challengers Sticker Capsule": 26,
     "Fever Case": 10,
     "USP-S | Flashback (Factory New)": 1,
-    "Sawed-Off | Black Sand (Factory New)": 1
+    "Sawed-Off | Black Sand (Factory New)": 1,
 }
 
-st.set_page_config(page_title="Mi Inventario CS2", layout="centered")
-st.title("🇵🇪 Tracker de Precios (PEN)")
+# Current Exchange Rate as of February 2026
+EXCHANGE_RATE = 3.3535  # 1 USD to PEN
 
-def get_single_price_pen(item_name):
-    """Fetches price for ONE item in Peruvian Sol (PEN)."""
+st.set_page_config(page_title="CS2 Inventory Tracker", layout="centered")
+
+st.title("Skins Price Tracker")
+st.write(f"**Current Exchange Rate:** 1 USD = {EXCHANGE_RATE} PEN")
+
+def get_price_usd(item_name):
+    """Fetches price for ONE item in USD."""
     url = "https://steamcommunity.com/market/priceoverview/"
-    params = {
-        'appid': 730,
-        'currency': 26, # 26 is the code for Peruvian Sol (PEN)
-        'market_hash_name': item_name
-    }
+    params = {'appid': 730, 'currency': 1, 'market_hash_name': item_name}
     try:
-        # Respect Steam's rate limits
-        time.sleep(1.2) 
+        time.sleep(1.2) # Rate limit protection
         res = requests.get(url, params=params).json()
-        
         if res.get('success'):
-            # Steam returns "S/ 1.50" or "S/. 1,50"
-            price_str = res.get('lowest_price', '0')
-            # Clean string: remove S/, spaces, and commas
-            clean_price = price_str.replace('S/', '').replace('S/.', '').replace(',', '').strip()
-            return float(clean_price)
+            price_str = res.get('lowest_price', '0').replace('$', '').replace(',', '')
+            return float(price_str)
         return 0.0
     except:
         return 0.0
 
-if st.button('Actualizar Precios en Soles'):
+if st.button('Update Prices'):
     rows = []
-    progress_bar = st.progress(0)
-    total_items = len(MY_ITEMS)
-    
-    for i, (item_name, qty) in enumerate(MY_ITEMS.items()):
-        price = get_single_price_pen(item_name)
+    bar = st.progress(0)
+    for i, (name, qty) in enumerate(MY_ITEMS.items()):
+        usd_price = get_price_usd(name)
+        pen_price = usd_price * EXCHANGE_RATE
+        
         rows.append({
-            "Item": item_name,
-            "Precio (S/)": price,
-            "Cant": qty,
-            "Subtotal": price * qty
+            "Item": name,
+            "Qty": qty,
+            "Price (USD)": usd_price,
+            "Price (PEN)": pen_price,
+            "Total (USD)": usd_price * qty,
+            "Total (PEN)": pen_price * qty
         })
-        progress_bar.progress((i + 1) / total_items)
+        bar.progress((i + 1) / len(MY_ITEMS))
     
-    df = pd.DataFrame(rows)
-    st.session_state['df_pen'] = df
-    st.success("¡Precios actualizados!")
+    st.session_state['inventory_df'] = pd.DataFrame(rows)
+    st.success("Prices Updated!")
 
-if 'df_pen' in st.session_state:
-    df = st.session_state['df_pen']
-    total_soles = df['Subtotal'].sum()
+if 'inventory_df' in st.session_state:
+    df = st.session_state['inventory_df']
     
-    st.metric("Valor Total", f"S/ {total_soles:,.2f}")
+    # Summary Metrics
+    col1, col2 = st.columns(2)
+    col1.metric("Total Value (USD)", f"${df['Total (USD)'].sum():,.2f}")
+    col2.metric("Total Value (PEN)", f"S/ {df['Total (PEN)'].sum():,.2f}")
     
-    # Display Table
+    # Table Formatting
     st.dataframe(
-        df.style.format({"Precio (S/)": "S/ {:.2f}", "Subtotal": "S/ {:.2f}"}),
+        df.style.format({
+            "Price (USD)": "${:.2f}",
+            "Price (PEN)": "S/ {:.2f}",
+            "Total (USD)": "${:.2f}",
+            "Total (PEN)": "S/ {:.2f}"
+        }),
         use_container_width=True,
         hide_index=True
     )
-else:
-    st.info("Haz clic en el botón para ver los precios actuales en Soles.")

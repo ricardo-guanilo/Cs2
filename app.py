@@ -5,9 +5,12 @@ import time
 
 # --- 1. LIST YOUR ITEMS HERE ---
 MY_ITEMS = {
-    "Recoil Case": 50,
-    "Paris 2023 Legends Sticker Capsule": 100,
-    "AK-47 | Slate (Field-Tested)": 1,
+    "AK-47 | The Empress (Field-Tested)": 1,
+    "Copenhagen 2024 Contenders Sticker Capsule": 31,
+    "Copenhagen 2024 Challengers Sticker Capsule": 26,
+    "Fever Case": 10,
+    "USP-S | Flashback (Factory New)": 1,
+    "Sawed-Off | Black Sand (Factory New)": 1
 }
 
 st.set_page_config(page_title="My Skins", layout="centered")
@@ -58,3 +61,4 @@ if 'df' in st.session_state:
     st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.info("Click the button above to fetch live Steam prices.")
+

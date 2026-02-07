@@ -17,6 +17,28 @@ with st.sidebar:
     st.info("Ensure your Steam Inventory is set to 'Public'.")
 
 @st.cache_data(ttl=600)  # Caches data for 10 mins to avoid Steam rate limits
+
+def get_inventory_and_prices(s_id, a_key):
+    # 1. Fetch Inventory from Steam
+    inv_url = f"https://steamcommunity.com/inventory/{s_id}/730/2?l=english&count=5000"
+    try:
+        response = requests.get(inv_url)
+        
+        # DEBUG: Let's see what Steam is actually saying
+        if response.status_code != 200:
+            return None, f"Steam API Error: Code {response.status_code}. (429 means too many requests, 403 means private profile)"
+        
+        inv_data = response.json()
+        
+        # If Steam returns success: False
+        if not inv_data or inv_data.get('success') != 1:
+            # Check if there's a specific message from Steam
+            msg = inv_data.get('Error') if inv_data else "Null Response"
+            return None, f"Steam refused: {msg}. Check if your SteamID64 is correct and public."
+
+    except Exception as e:
+        return None, f"App Error: {str(e)}"
+
 def get_inventory_and_prices(s_id, a_key):
     # 1. Fetch Inventory from Steam
     inv_url = f"https://steamcommunity.com/inventory/{s_id}/730/2?l=english&count=5000"
@@ -83,3 +105,4 @@ if steam_id and api_key:
             )
 else:
     st.warning("Please enter your SteamID and API Key in the sidebar.")
+

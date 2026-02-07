@@ -13,53 +13,62 @@ MY_ITEMS = {
     "Sawed-Off | Black Sand (Factory New)": 1
 }
 
-st.set_page_config(page_title="My Skins", layout="centered")
-st.title("Skins Price Tracker (Direct)")
+st.set_page_config(page_title="Mi Inventario CS2", layout="centered")
+st.title("🇵🇪 Tracker de Precios (PEN)")
 
-def get_single_price(item_name):
-    """Fetches price for ONE item directly from Steam."""
+def get_single_price_pen(item_name):
+    """Fetches price for ONE item in Peruvian Sol (PEN)."""
     url = "https://steamcommunity.com/market/priceoverview/"
     params = {
         'appid': 730,
-        'currency': 26, # Updated to PEN
+        'currency': 26, # 26 is the code for Peruvian Sol (PEN)
         'market_hash_name': item_name
     }
     try:
-        # We add a small delay so Steam doesn't get mad
-        time.sleep(1.1) 
+        # Respect Steam's rate limits
+        time.sleep(1.2) 
         res = requests.get(url, params=params).json()
+        
         if res.get('success'):
-            # Steam returns strings like "$1.50", we need to clean it to a float
-            price_str = res.get('lowest_price', '0').replace('$', '').replace(',', '')
-            return float(price_str)
+            # Steam returns "S/ 1.50" or "S/. 1,50"
+            price_str = res.get('lowest_price', '0')
+            # Clean string: remove S/, spaces, and commas
+            clean_price = price_str.replace('S/', '').replace('S/.', '').replace(',', '').strip()
+            return float(clean_price)
         return 0.0
     except:
         return 0.0
 
-if st.button('Update Prices Now'):
+if st.button('Actualizar Precios en Soles'):
     rows = []
     progress_bar = st.progress(0)
     total_items = len(MY_ITEMS)
     
     for i, (item_name, qty) in enumerate(MY_ITEMS.items()):
-        price = get_single_price(item_name)
+        price = get_single_price_pen(item_name)
         rows.append({
             "Item": item_name,
-            "Price": price,
-            "Qty": qty,
+            "Precio (S/)": price,
+            "Cant": qty,
             "Subtotal": price * qty
         })
         progress_bar.progress((i + 1) / total_items)
     
     df = pd.DataFrame(rows)
-    st.session_state['df'] = df
-    st.success("Prices Updated!")
+    st.session_state['df_pen'] = df
+    st.success("¡Precios actualizados!")
 
-if 'df' in st.session_state:
-    df = st.session_state['df']
-    st.metric("Total Value", f"${df['Subtotal'].sum():,.2f}")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+if 'df_pen' in st.session_state:
+    df = st.session_state['df_pen']
+    total_soles = df['Subtotal'].sum()
+    
+    st.metric("Valor Total", f"S/ {total_soles:,.2f}")
+    
+    # Display Table
+    st.dataframe(
+        df.style.format({"Precio (S/)": "S/ {:.2f}", "Subtotal": "S/ {:.2f}"}),
+        use_container_width=True,
+        hide_index=True
+    )
 else:
-    st.info("Click the button above to fetch live Steam prices.")
-
-
+    st.info("Haz clic en el botón para ver los precios actuales en Soles.")
